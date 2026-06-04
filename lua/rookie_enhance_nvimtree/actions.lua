@@ -481,4 +481,23 @@ function M.unzip(...)
     print(string.format("Unzipping %s to %s...", path, out_dir))
 end
 
+function M.change_root(path)
+    if not path or path == "" then
+        path = vim.fn.getcwd()
+    end
+    path = vim.fn.fnamemodify(path, ":p")
+    -- remove trailing slash
+    path = path:gsub("[/\\]$", "")
+
+    if vim.fn.isdirectory(path) == 0 then
+        vim.api.nvim_err_writeln("Path is not a directory: " .. path)
+        return
+    end
+
+    vim.api.nvim_set_current_dir(path)
+    local api = require("nvim-tree.api")
+    api.tree.change_root(path)
+    print("CWD and nvim-tree root changed to: " .. path)
+end
+
 return M

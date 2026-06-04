@@ -23,6 +23,19 @@ function M.setup(opts)
         vim.cmd("qa")
     end, {})
 
+    -- Command to change nvim-tree root and CWD
+    vim.api.nvim_create_user_command(
+        "NvimTreeChangeRoot",
+        function(opts)
+            actions.change_root(opts.args)
+        end,
+        {
+            nargs = 1,
+            complete = "dir",
+            desc = "Change nvim-tree root and CWD to the specified path",
+        }
+    )
+
     local default_opts = {
         on_attach = keymaps.on_attach,
         view = {
