@@ -42,6 +42,15 @@ function M.copy_node_path()
     if #paths > 0 then
         vim.fn.setreg("+", table.concat(paths, "\n"))
         vim.notify("Copied " .. #paths .. " path(s) to system clipboard")
+
+        -- Add visual wave indicator (NvimTreeCopiedHL) for copied nodes
+        api.fs.clear_clipboard()
+        for _, node in ipairs(nodes) do
+            if node.absolute_path then
+                api.fs.copy.node(node)
+            end
+        end
+
         -- Clear marks after copying to match expected "copy" behavior
         api.marks.clear()
     end
@@ -422,8 +431,7 @@ function M.zip(...)
 
     local dir = vim.fn.fnamemodify(path, ":h")
     local name = vim.fn.fnamemodify(path, ":t")
-    local sep = (vim.fn.has("win32") == 1 or vim.fn.has("win64") == 1) and "\\"
-        or "/"
+    local sep = (vim.fn.has("win32") == 1 or vim.fn.has("win64") == 1) and "\\" or "/"
     local zip_file = dir .. sep .. name .. ".zip"
 
     if vim.fn.executable("7z") == 0 then
@@ -438,7 +446,9 @@ function M.zip(...)
                 if code == 0 then
                     print(string.format("Successfully zipped to %s", zip_file))
                 else
-                    vim.api.nvim_err_writeln(string.format("Failed to zip %s (exit code: %s)", path, code))
+                    vim.api.nvim_err_writeln(
+                        string.format("Failed to zip %s (exit code: %s)", path, code)
+                    )
                 end
             end)
         end,
@@ -457,8 +467,7 @@ function M.unzip(...)
 
     local dir = vim.fn.fnamemodify(path, ":h")
     local name_no_ext = vim.fn.fnamemodify(path, ":t:r")
-    local sep = (vim.fn.has("win32") == 1 or vim.fn.has("win64") == 1) and "\\"
-        or "/"
+    local sep = (vim.fn.has("win32") == 1 or vim.fn.has("win64") == 1) and "\\" or "/"
     local out_dir = dir .. sep .. name_no_ext
 
     if vim.fn.executable("7z") == 0 then
@@ -473,7 +482,9 @@ function M.unzip(...)
                 if code == 0 then
                     print(string.format("Successfully unzipped to %s", out_dir))
                 else
-                    vim.api.nvim_err_writeln(string.format("Failed to unzip %s (exit code: %s)", path, code))
+                    vim.api.nvim_err_writeln(
+                        string.format("Failed to unzip %s (exit code: %s)", path, code)
+                    )
                 end
             end)
         end,
