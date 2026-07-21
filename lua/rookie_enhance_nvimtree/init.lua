@@ -24,17 +24,13 @@ function M.setup(opts)
     end, {})
 
     -- Command to change nvim-tree root and CWD
-    vim.api.nvim_create_user_command(
-        "NvimTreeChangeRoot",
-        function(opts)
-            actions.change_root(opts.args)
-        end,
-        {
-            nargs = 1,
-            complete = "dir",
-            desc = "Change nvim-tree root and CWD to the specified path",
-        }
-    )
+    vim.api.nvim_create_user_command("NvimTreeChangeRoot", function(opts)
+        actions.change_root(opts.args)
+    end, {
+        nargs = 1,
+        complete = "dir",
+        desc = "Change nvim-tree root and CWD to the specified path",
+    })
 
     local default_opts = {
         on_attach = keymaps.on_attach,
@@ -50,6 +46,7 @@ function M.setup(opts)
         -- when switching between git branches
         filesystem_watchers = {
             debounce_delay = 5000,
+            enable = false,
         },
     }
 
