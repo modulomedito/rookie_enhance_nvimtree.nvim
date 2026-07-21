@@ -34,6 +34,9 @@ function M.setup(opts)
 
     local default_opts = {
         on_attach = keymaps.on_attach,
+        git = {
+            enable = false,
+        },
         view = {
             width = 40,
         },
@@ -45,7 +48,6 @@ function M.setup(opts)
         -- If debounce_delay = 50 (default), error messages will be shown
         -- when switching between git branches
         filesystem_watchers = {
-            debounce_delay = 5000,
             enable = false,
         },
     }
