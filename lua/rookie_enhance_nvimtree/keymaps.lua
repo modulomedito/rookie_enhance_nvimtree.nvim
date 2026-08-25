@@ -36,7 +36,7 @@ function M.on_attach(bufnr)
         vim.keymap.set("n", "s", function()
             local node = api.tree.get_node_under_cursor()
             if node then
-                vim.cmd('silent !start "" "' .. node.absolute_path .. '"')
+                vim.cmd('silent !start "' .. node.absolute_path .. '"')
             end
         end, opts("Open node with start (win32)"))
     end
