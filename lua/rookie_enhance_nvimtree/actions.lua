@@ -2,60 +2,81 @@ local M = {}
 
 M.last_op = "copy"
 
-function M.copy_node_path()
+-- Set of absolute_paths currently marked to be copied to the system clipboard.
+-- Source of truth for the "+" register; nvim-tree's own copy clipboard is only
+-- driven in parallel for the visual NvimTreeCopiedHL indicator ("c" key look).
+M.sys_copy_marks = {}
+
+-- Collect nodes targeted by the current invocation:
+-- normal mode -> node under cursor; visual-line -> every node in the selection.
+local function collect_nodes()
     local api = require("nvim-tree.api")
-    local nodes = api.marks.list()
+    local nodes = {}
+    local mode = vim.fn.mode()
+    if mode == "v" or mode == "V" or mode == "\22" then
+        local sline = vim.fn.line("v")
+        local eline = vim.fn.line(".")
+        if sline > eline then
+            sline, eline = eline, sline
+        end
 
-    if #nodes == 0 then
-        local mode = vim.fn.mode()
-        if mode == "v" or mode == "V" or mode == "\22" then
-            local sline = vim.fn.line("v")
-            local eline = vim.fn.line(".")
-            if sline > eline then
-                sline, eline = eline, sline
-            end
-
-            local curr_cursor = vim.api.nvim_win_get_cursor(0)
-            for i = sline, eline do
-                vim.api.nvim_win_set_cursor(0, { i, 0 })
-                local node = api.tree.get_node_under_cursor()
-                if node and node.name ~= ".." then
-                    table.insert(nodes, node)
-                end
-            end
-            vim.api.nvim_win_set_cursor(0, curr_cursor)
-        else
+        local curr_cursor = vim.api.nvim_win_get_cursor(0)
+        for i = sline, eline do
+            vim.api.nvim_win_set_cursor(0, { i, 0 })
             local node = api.tree.get_node_under_cursor()
-            if node then
+            if node and node.name ~= ".." then
                 table.insert(nodes, node)
             end
         end
+        vim.api.nvim_win_set_cursor(0, curr_cursor)
+    else
+        local node = api.tree.get_node_under_cursor()
+        if node then
+            table.insert(nodes, node)
+        end
+    end
+    return nodes
+end
+
+function M.copy_node_path()
+    local api = require("nvim-tree.api")
+    local nodes = collect_nodes()
+    if #nodes == 0 then
+        return
     end
 
-    local paths = {}
+    -- Leave visual mode before toggling per-node, otherwise api.fs.copy.node
+    -- would act on the whole selection instead of the explicit node argument.
+    vim.cmd("normal! \27")
+
     for _, node in ipairs(nodes) do
         if node.absolute_path then
-            table.insert(paths, node.absolute_path)
-        end
-    end
-
-    if #paths > 0 then
-        vim.fn.setreg("+", table.concat(paths, "\n"))
-        vim.notify("Copied " .. #paths .. " path(s) to system clipboard")
-
-        -- Add visual wave indicator (NvimTreeCopiedHL) for copied nodes
-        api.fs.clear_clipboard()
-        for _, node in ipairs(nodes) do
-            if node.absolute_path then
-                api.fs.copy.node(node)
+            if M.sys_copy_marks[node.absolute_path] then
+                M.sys_copy_marks[node.absolute_path] = nil
+            else
+                M.sys_copy_marks[node.absolute_path] = true
             end
+            -- Toggle nvim-tree's clipboard -> auto NvimTreeCopiedHL + [C] sign,
+            -- identical to pressing "c".
+            api.fs.copy.node(node)
         end
-
-        -- Clear marks after copying to match expected "copy" behavior
-        api.marks.clear()
     end
 
-    vim.cmd("normal! \27")
+    local paths = vim.tbl_keys(M.sys_copy_marks)
+    if #paths > 0 then
+        table.sort(paths)
+        local text = table.concat(paths, "\n")
+        vim.fn.setreg("+", text)
+        vim.fn.setreg("*", text)
+        vim.notify(
+            "System clipboard: " .. #paths .. " path(s) marked for copy",
+            vim.log.levels.INFO
+        )
+    else
+        vim.fn.setreg("+", "")
+        vim.fn.setreg("*", "")
+        vim.notify("System clipboard cleared (no nodes marked)", vim.log.levels.INFO)
+    end
 end
 
 function M.cut_node()

@@ -40,12 +40,12 @@ function M.on_attach(bufnr)
             end
         end, opts("Open node with start (win32)"))
     end
-    vim.keymap.set("n", "<leader>mc", actions.copy_node_path, opts("Copy node path to clipboard"))
+    vim.keymap.set("n", "<leader>mc", actions.copy_node_path, opts("Toggle node as copy-to-clipboard"))
     vim.keymap.set(
         "v",
         "<leader>mc",
         actions.copy_node_path,
-        opts("Copy selected paths to clipboard")
+        opts("Toggle selected nodes as copy-to-clipboard")
     )
     vim.keymap.set("n", "<leader>mx", actions.cut_node, opts("Cut node"))
     vim.keymap.set("n", "<leader>mv", actions.paste_node, opts("Rookie nvim-tree: Paste node"))
