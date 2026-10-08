@@ -59,7 +59,13 @@ function M.on_attach(bufnr)
         "n",
         "<leader>mC",
         actions.copy_node_content,
-        opts("Copy node content to clipboard")
+        opts("Toggle node as copy-content-to-clipboard")
+    )
+    vim.keymap.set(
+        "v",
+        "<leader>mC",
+        actions.copy_node_content,
+        opts("Toggle selected nodes as copy-content-to-clipboard")
     )
     vim.keymap.set(
         "n",

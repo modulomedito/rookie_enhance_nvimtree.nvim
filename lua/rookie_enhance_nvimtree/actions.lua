@@ -2,10 +2,14 @@ local M = {}
 
 M.last_op = "copy"
 
--- Set of absolute_paths currently marked to be copied to the system clipboard.
--- Source of truth for the "+" register; nvim-tree's own copy clipboard is only
--- driven in parallel for the visual NvimTreeCopiedHL indicator ("c" key look).
-M.sys_copy_marks = {}
+-- Marked nodes for the system clipboard, keyed by absolute_path.
+-- Two mutually-exclusive modes: "path" copies the node's path as text,
+-- "content" copies the node's file contents as text. A node lives in at most
+-- one of the two sets. nvim-tree's own copy clipboard is driven in parallel
+-- (clear + re-add of the union) purely for the visual NvimTreeCopiedHL
+-- indicator and [C] sign, identical to pressing "c".
+M.sys_copy_marks = {}    -- path mode    (<leader>mc)
+M.sys_content_marks = {} -- content mode (<leader>mC)
 
 -- Collect nodes targeted by the current invocation:
 -- normal mode -> node under cursor; visual-line -> every node in the selection.
@@ -38,7 +42,68 @@ local function collect_nodes()
     return nodes
 end
 
-function M.copy_node_path()
+-- Toggle a node's mark in the given mode, keeping the two modes mutually exclusive.
+local function toggle_mark(path, mode)
+    if mode == "path" then
+        if M.sys_copy_marks[path] then
+            M.sys_copy_marks[path] = nil
+        else
+            M.sys_content_marks[path] = nil
+            M.sys_copy_marks[path] = true
+        end
+    else
+        if M.sys_content_marks[path] then
+            M.sys_content_marks[path] = nil
+        else
+            M.sys_copy_marks[path] = nil
+            M.sys_content_marks[path] = true
+        end
+    end
+end
+
+-- Mirror the union of both mark sets into nvim-tree's clipboard so the c-key
+-- highlight ([C] + NvimTreeCopiedHL) is shown for every marked node.
+local function refresh_nvim_clipboard()
+    local api = require("nvim-tree.api")
+    api.fs.clear_clipboard()
+    local union = {}
+    for p in pairs(M.sys_copy_marks) do
+        union[p] = true
+    end
+    for p in pairs(M.sys_content_marks) do
+        union[p] = true
+    end
+    if vim.tbl_isempty(union) then
+        return
+    end
+
+    local function walk(nodes)
+        for _, node in ipairs(nodes or {}) do
+            if node.absolute_path and union[node.absolute_path] and node.name ~= ".." then
+                api.fs.copy.node(node)
+            end
+            if node.nodes then
+                walk(node.nodes)
+            end
+        end
+    end
+    walk(api.tree.get_nodes())
+end
+
+-- Read a file's text content, or nil if it can't be read or is a directory.
+local function read_file_content(path)
+    if vim.fn.isdirectory(path) == 1 or vim.fn.filereadable(path) == 0 then
+        return nil
+    end
+    local ok, lines = pcall(vim.fn.readfile, path)
+    if not ok then
+        return nil
+    end
+    return table.concat(lines, "\n")
+end
+
+-- Shared toggle + sync routine for both <leader>mc (path) and <leader>mC (content).
+local function apply_marks(mode)
     local api = require("nvim-tree.api")
     local nodes = collect_nodes()
     if #nodes == 0 then
@@ -51,25 +116,48 @@ function M.copy_node_path()
 
     for _, node in ipairs(nodes) do
         if node.absolute_path then
-            if M.sys_copy_marks[node.absolute_path] then
-                M.sys_copy_marks[node.absolute_path] = nil
-            else
-                M.sys_copy_marks[node.absolute_path] = true
-            end
-            -- Toggle nvim-tree's clipboard -> auto NvimTreeCopiedHL + [C] sign,
-            -- identical to pressing "c".
-            api.fs.copy.node(node)
+            toggle_mark(node.absolute_path, mode)
         end
     end
 
-    local paths = vim.tbl_keys(M.sys_copy_marks)
-    if #paths > 0 then
-        table.sort(paths)
-        local text = table.concat(paths, "\n")
+    refresh_nvim_clipboard()
+
+    -- Build the system clipboard payload from the current marks.
+    local path_entries = {}
+    for p in pairs(M.sys_copy_marks) do
+        path_entries[#path_entries + 1] = p
+    end
+    table.sort(path_entries)
+
+    local content_entries = {}
+    for p in pairs(M.sys_content_marks) do
+        content_entries[#content_entries + 1] = p
+    end
+    table.sort(content_entries)
+
+    local payload = {}
+    for _, p in ipairs(path_entries) do
+        payload[#payload + 1] = p
+    end
+    for _, p in ipairs(content_entries) do
+        local content = read_file_content(p)
+        if content then
+            payload[#payload + 1] = content
+        else
+            vim.notify("Skipped (not a readable file): " .. p, vim.log.levels.WARN)
+        end
+    end
+
+    if #payload > 0 then
+        local text = table.concat(payload, "\n")
         vim.fn.setreg("+", text)
         vim.fn.setreg("*", text)
         vim.notify(
-            "System clipboard: " .. #paths .. " path(s) marked for copy",
+            "System clipboard: "
+                .. #path_entries
+                .. " path(s) + "
+                .. #content_entries
+                .. " file(s) content marked",
             vim.log.levels.INFO
         )
     else
@@ -77,6 +165,10 @@ function M.copy_node_path()
         vim.fn.setreg("*", "")
         vim.notify("System clipboard cleared (no nodes marked)", vim.log.levels.INFO)
     end
+end
+
+function M.copy_node_path()
+    apply_marks("path")
 end
 
 function M.cut_node()
@@ -112,32 +204,7 @@ function M.run_executable_detached()
 end
 
 function M.copy_node_content()
-    local api = require("nvim-tree.api")
-    local node = api.tree.get_node_under_cursor()
-    if not node then
-        print("No node selected")
-        return
-    end
-    local path = node.absolute_path
-    path = path:gsub("/", "\\")
-
-    if vim.fn.filereadable(path) == 0 and vim.fn.isdirectory(path) == 0 then
-        print("Path not readable: " .. path)
-        return
-    end
-
-    local ps_path = path:gsub("'", "''")
-    local script = string.format(
-        "Add-Type -AssemblyName System.Windows.Forms; $files = New-Object System.Collections.Specialized.StringCollection; $files.Add('%s'); [System.Windows.Forms.Clipboard]::SetFileDropList($files)",
-        ps_path
-    )
-
-    local output = vim.fn.system({ "powershell", "-NoProfile", "-Command", script })
-    if vim.v.shell_error == 0 then
-        print("Copied file to system clipboard (Explorer compatible): " .. path)
-    else
-        print("Failed to copy file to clipboard: " .. output)
-    end
+    apply_marks("content")
 end
 
 function M.cut_node_content()
