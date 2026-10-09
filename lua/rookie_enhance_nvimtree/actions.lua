@@ -61,35 +61,6 @@ local function toggle_mark(path, mode)
     end
 end
 
--- Mirror the union of both mark sets into nvim-tree's clipboard so the c-key
--- highlight ([C] + NvimTreeCopiedHL) is shown for every marked node.
-local function refresh_nvim_clipboard()
-    local api = require("nvim-tree.api")
-    api.fs.clear_clipboard()
-    local union = {}
-    for p in pairs(M.sys_copy_marks) do
-        union[p] = true
-    end
-    for p in pairs(M.sys_content_marks) do
-        union[p] = true
-    end
-    if vim.tbl_isempty(union) then
-        return
-    end
-
-    local function walk(nodes)
-        for _, node in ipairs(nodes or {}) do
-            if node.absolute_path and union[node.absolute_path] and node.name ~= ".." then
-                api.fs.copy.node(node)
-            end
-            if node.nodes then
-                walk(node.nodes)
-            end
-        end
-    end
-    walk(api.tree.get_nodes())
-end
-
 -- Read a file's text content, or nil if it can't be read or is a directory.
 local function read_file_content(path)
     if vim.fn.isdirectory(path) == 1 or vim.fn.filereadable(path) == 0 then
@@ -116,11 +87,14 @@ local function apply_marks(mode)
 
     for _, node in ipairs(nodes) do
         if node.absolute_path then
+            -- Toggle nvim-tree's clipboard so the c-key indicator
+            -- (NvimTreeCopiedHL + [C] sign) follows the mark. Note this also
+            -- writes nvim-tree's own copy paths to the register, so the
+            -- payload below must be written afterwards to take precedence.
+            api.fs.copy.node(node)
             toggle_mark(node.absolute_path, mode)
         end
     end
-
-    refresh_nvim_clipboard()
 
     -- Build the system clipboard payload from the current marks.
     local path_entries = {}
