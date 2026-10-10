@@ -113,11 +113,22 @@ local function apply_marks(mode)
     for _, p in ipairs(path_entries) do
         payload[#payload + 1] = p
     end
+
+    -- Marks present before pruning: distinguishes "user toggled everything off"
+    -- (clipboard should be cleared) from "marked nodes exist but none can be read"
+    -- (clipboard must be left alone, otherwise we destroy what was copied before).
+    local had_marks = #path_entries > 0 or #content_entries > 0
+
+    local copied = 0
     for _, p in ipairs(content_entries) do
         local content = read_file_content(p)
         if content then
             payload[#payload + 1] = content
+            copied = copied + 1
         else
+            -- Drop the mark again: an unreadable node must not linger and poison
+            -- every later payload, or report itself as copied.
+            M.sys_content_marks[p] = nil
             vim.notify("Skipped (not a readable file): " .. p, vim.log.levels.WARN)
         end
     end
@@ -130,9 +141,14 @@ local function apply_marks(mode)
             "System clipboard: "
                 .. #path_entries
                 .. " path(s) + "
-                .. #content_entries
+                .. copied
                 .. " file(s) content marked",
             vim.log.levels.INFO
+        )
+    elseif had_marks then
+        vim.notify(
+            "Nothing readable to copy; system clipboard left unchanged",
+            vim.log.levels.WARN
         )
     else
         vim.fn.setreg("+", "")
