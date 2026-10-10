@@ -88,9 +88,9 @@ local function apply_marks(mode)
     for _, node in ipairs(nodes) do
         if node.absolute_path then
             -- Toggle nvim-tree's clipboard so the c-key indicator
-            -- (NvimTreeCopiedHL + [C] sign) follows the mark. Note this also
-            -- writes nvim-tree's own copy paths to the register, so the
-            -- payload below must be written afterwards to take precedence.
+            -- (NvimTreeCopiedHL + [C] sign) follows the mark. With
+            -- actions.use_system_clipboard = false this only touches register
+            -- "1", so it cannot race our system clipboard write below.
             api.fs.copy.node(node)
             toggle_mark(node.absolute_path, mode)
         end
@@ -135,8 +135,12 @@ local function apply_marks(mode)
 
     if #payload > 0 then
         local text = table.concat(payload, "\n")
+        -- One authoritative write only. Each setreg to "+"/"*" spawns its own
+        -- win32yank on Windows; consecutive spawns race for the clipboard lock
+        -- and all but the last can be dropped (OS error 1418). "clipboard =
+        -- unnamedplus" already mirrors "+" to the system clipboard, so writing
+        -- "*" as well is redundant.
         vim.fn.setreg("+", text)
-        vim.fn.setreg("*", text)
         vim.notify(
             "System clipboard: "
                 .. #path_entries
@@ -152,7 +156,6 @@ local function apply_marks(mode)
         )
     else
         vim.fn.setreg("+", "")
-        vim.fn.setreg("*", "")
         vim.notify("System clipboard cleared (no nodes marked)", vim.log.levels.INFO)
     end
 end
@@ -170,7 +173,6 @@ function M.cut_node()
     end
     local path = node.absolute_path
     vim.fn.setreg("+", path)
-    vim.fn.setreg("*", path)
     M.last_op = "cut"
     print("Marked for cut: " .. path)
 end

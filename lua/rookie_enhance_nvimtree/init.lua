@@ -44,6 +44,15 @@ function M.setup(opts)
             dotfiles = false,
             git_ignored = false,
         },
+        actions = {
+            -- Keep nvim-tree's internal clipboard on register "1" instead of "+".
+            -- copy.node is called only to drive the [C] / NvimTreeCopiedHL
+            -- indicator, but with use_system_clipboard it also spawns win32yank
+            -- to push node paths to the system clipboard on every toggle. Those
+            -- extra spawns collide with our own write on the Windows clipboard
+            -- lock (OS error 1418) and the copied content never lands.
+            use_system_clipboard = false,
+        },
         -- If max_events = 0, makes nvim slow
         -- If debounce_delay = 50 (default), error messages will be shown
         -- when switching between git branches
