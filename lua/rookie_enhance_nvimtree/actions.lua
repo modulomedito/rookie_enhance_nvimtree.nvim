@@ -61,7 +61,10 @@ local function toggle_mark(path, mode)
     end
 end
 
--- Read a file's text content, or nil if it can't be read or is a directory.
+-- Read a file's text content, or nil if it can't be read, is a directory, or is
+-- empty. Empty must map to nil: "" is truthy in Lua, so returning it would make
+-- the caller treat an empty file as a successful copy and then wipe whatever the
+-- user already had on the system clipboard with setreg("+", "").
 local function read_file_content(path)
     if vim.fn.isdirectory(path) == 1 or vim.fn.filereadable(path) == 0 then
         return nil
@@ -70,7 +73,11 @@ local function read_file_content(path)
     if not ok then
         return nil
     end
-    return table.concat(lines, "\n")
+    local content = table.concat(lines, "\n")
+    if content == "" then
+        return nil
+    end
+    return content
 end
 
 -- Shared toggle + sync routine for both <leader>mc (path) and <leader>mC (content).
@@ -126,10 +133,10 @@ local function apply_marks(mode)
             payload[#payload + 1] = content
             copied = copied + 1
         else
-            -- Drop the mark again: an unreadable node must not linger and poison
-            -- every later payload, or report itself as copied.
+            -- Drop the mark again: an unreadable or empty node must not linger
+            -- and poison every later payload, or report itself as copied.
             M.sys_content_marks[p] = nil
-            vim.notify("Skipped (not a readable file): " .. p, vim.log.levels.WARN)
+            vim.notify("Skipped (empty or not a readable file): " .. p, vim.log.levels.WARN)
         end
     end
 
