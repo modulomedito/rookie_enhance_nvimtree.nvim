@@ -40,11 +40,18 @@ function M.on_attach(bufnr)
             end
         end, opts("Open node with start (win32)"))
     end
-    vim.keymap.set("n", "<leader>mc", actions.copy_node_path, opts("Copy node path to clipboard"))
+    vim.keymap.set("n", "<leader>mm", actions.mark_node, opts("Mark node (underline)"))
+    vim.keymap.set("v", "<leader>mm", actions.mark_node, opts("Mark selected nodes (underline)"))
+    vim.keymap.set(
+        "n",
+        "<leader>mc",
+        actions.copy_node_path,
+        opts("Copy marked paths to clipboard")
+    )
     vim.keymap.set(
         "v",
         "<leader>mc",
-        actions.copy_node_path,
+        actions.copy_selection_path,
         opts("Copy selected paths to clipboard")
     )
     vim.keymap.set("n", "<leader>mx", actions.cut_node, opts("Cut node"))
@@ -59,7 +66,13 @@ function M.on_attach(bufnr)
         "n",
         "<leader>mC",
         actions.copy_node_content,
-        opts("Copy node content to clipboard")
+        opts("Copy marked contents to system clipboard")
+    )
+    vim.keymap.set(
+        "v",
+        "<leader>mC",
+        actions.copy_selection_content,
+        opts("Copy selected contents to system clipboard")
     )
     vim.keymap.set(
         "n",

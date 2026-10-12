@@ -2,60 +2,112 @@ local M = {}
 
 M.last_op = "copy"
 
-function M.copy_node_path()
+-- Absolute paths marked via <leader>mm. nvim-tree's own copy clipboard holds
+-- the underline (NvimTreeCopiedHL); this set only mirrors it so the marked
+-- nodes can be enumerated by <leader>mc / <leader>mC.
+M.marked = {}
+
+-- The node under the cursor (normal mode), or every node in the visual
+-- selection. Must be called before leaving visual mode.
+local function collect_nodes()
     local api = require("nvim-tree.api")
-    local nodes = api.marks.list()
+    local nodes = {}
+    local mode = vim.fn.mode()
+    if mode == "v" or mode == "V" or mode == "\22" then
+        local sline = vim.fn.line("v")
+        local eline = vim.fn.line(".")
+        if sline > eline then
+            sline, eline = eline, sline
+        end
 
-    if #nodes == 0 then
-        local mode = vim.fn.mode()
-        if mode == "v" or mode == "V" or mode == "\22" then
-            local sline = vim.fn.line("v")
-            local eline = vim.fn.line(".")
-            if sline > eline then
-                sline, eline = eline, sline
-            end
-
-            local curr_cursor = vim.api.nvim_win_get_cursor(0)
-            for i = sline, eline do
-                vim.api.nvim_win_set_cursor(0, { i, 0 })
-                local node = api.tree.get_node_under_cursor()
-                if node and node.name ~= ".." then
-                    table.insert(nodes, node)
-                end
-            end
-            vim.api.nvim_win_set_cursor(0, curr_cursor)
-        else
+        local curr_cursor = vim.api.nvim_win_get_cursor(0)
+        for i = sline, eline do
+            vim.api.nvim_win_set_cursor(0, { i, 0 })
             local node = api.tree.get_node_under_cursor()
-            if node then
+            if node and node.name ~= ".." then
                 table.insert(nodes, node)
             end
         end
+        vim.api.nvim_win_set_cursor(0, curr_cursor)
+    else
+        local node = api.tree.get_node_under_cursor()
+        if node and node.name ~= ".." then
+            table.insert(nodes, node)
+        end
     end
+    return nodes
+end
 
+-- Sorted absolute paths of the marked nodes.
+local function marked_paths()
+    local paths = vim.tbl_keys(M.marked)
+    table.sort(paths)
+    return paths
+end
+
+-- Sorted absolute paths of the visual selection, then leave visual mode.
+local function selection_paths()
     local paths = {}
-    for _, node in ipairs(nodes) do
+    for _, node in ipairs(collect_nodes()) do
         if node.absolute_path then
             table.insert(paths, node.absolute_path)
         end
     end
+    vim.cmd("normal! \27")
+    table.sort(paths)
+    return paths
+end
 
-    if #paths > 0 then
-        vim.fn.setreg("+", table.concat(paths, "\n"))
-        vim.notify("Copied " .. #paths .. " path(s) to system clipboard")
+-- Remove every mark and its underline.
+local function clear_marks()
+    M.marked = {}
+    require("nvim-tree.api").fs.clear_clipboard()
+end
 
-        -- Add visual wave indicator (NvimTreeCopiedHL) for copied nodes
-        api.fs.clear_clipboard()
-        for _, node in ipairs(nodes) do
-            if node.absolute_path then
-                api.fs.copy.node(node)
-            end
-        end
-
-        -- Clear marks after copying to match expected "copy" behavior
-        api.marks.clear()
+-- <leader>mm: toggle the underline mark, using the same NvimTreeCopiedHL as "c".
+function M.mark_node()
+    local nodes = collect_nodes()
+    if #nodes == 0 then
+        return
     end
 
+    local api = require("nvim-tree.api")
+    -- copy.node acts on the whole visual selection while in visual mode, so
+    -- leave it first; the target nodes were already captured above.
     vim.cmd("normal! \27")
+
+    for _, node in ipairs(nodes) do
+        if node.absolute_path then
+            api.fs.copy.node(node)
+            if M.marked[node.absolute_path] then
+                M.marked[node.absolute_path] = nil
+            else
+                M.marked[node.absolute_path] = true
+            end
+        end
+    end
+end
+
+-- <leader>mc (normal): copy the marked paths, then drop the underlines.
+function M.copy_node_path()
+    local paths = marked_paths()
+    if #paths == 0 then
+        vim.notify("No marked nodes", vim.log.levels.INFO)
+        return
+    end
+    vim.fn.setreg("+", table.concat(paths, "\n"))
+    vim.notify("Copied " .. #paths .. " path(s) to system clipboard")
+    clear_marks()
+end
+
+-- <leader>mc (visual): copy the selected paths, then return to normal mode.
+function M.copy_selection_path()
+    local paths = selection_paths()
+    if #paths == 0 then
+        return
+    end
+    vim.fn.setreg("+", table.concat(paths, "\n"))
+    vim.notify("Copied " .. #paths .. " path(s) to system clipboard")
 end
 
 function M.cut_node()
@@ -90,32 +142,62 @@ function M.run_executable_detached()
     end
 end
 
-function M.copy_node_content()
-    local api = require("nvim-tree.api")
-    local node = api.tree.get_node_under_cursor()
-    if not node then
-        print("No node selected")
-        return
-    end
-    local path = node.absolute_path
-    path = path:gsub("/", "\\")
-
-    if vim.fn.filereadable(path) == 0 and vim.fn.isdirectory(path) == 0 then
-        print("Path not readable: " .. path)
-        return
+-- Put paths on the Windows clipboard as an Explorer file-drop list.
+local function drop_paths_to_clipboard(paths)
+    if vim.fn.has("win32") == 0 and vim.fn.has("win64") == 0 then
+        vim.notify("File-drop to the system clipboard is Windows only", vim.log.levels.WARN)
+        return false
     end
 
-    local ps_path = path:gsub("'", "''")
-    local script = string.format(
-        "Add-Type -AssemblyName System.Windows.Forms; $files = New-Object System.Collections.Specialized.StringCollection; $files.Add('%s'); [System.Windows.Forms.Clipboard]::SetFileDropList($files)",
-        ps_path
-    )
+    local adds = {}
+    for _, path in ipairs(paths) do
+        local win_path = path:gsub("/", "\\")
+        if vim.fn.filereadable(win_path) == 1 or vim.fn.isdirectory(win_path) == 1 then
+            table.insert(adds, "$files.Add('" .. win_path:gsub("'", "''") .. "')")
+        end
+    end
+    if #adds == 0 then
+        vim.notify("No readable files to copy", vim.log.levels.WARN)
+        return false
+    end
+
+    local script = "Add-Type -AssemblyName System.Windows.Forms; "
+        .. "$files = New-Object System.Collections.Specialized.StringCollection; "
+        .. table.concat(adds, "; ")
+        .. "; [System.Windows.Forms.Clipboard]::SetFileDropList($files)"
 
     local output = vim.fn.system({ "powershell", "-NoProfile", "-Command", script })
-    if vim.v.shell_error == 0 then
-        print("Copied file to system clipboard (Explorer compatible): " .. path)
-    else
-        print("Failed to copy file to clipboard: " .. output)
+    if vim.v.shell_error ~= 0 then
+        vim.notify("Failed to copy to clipboard: " .. output, vim.log.levels.ERROR)
+        return false
+    end
+    return true
+end
+
+-- <leader>mC (normal): copy the marked files as an Explorer file-drop list,
+-- then drop the underlines.
+function M.copy_node_content()
+    local paths = marked_paths()
+    if #paths == 0 then
+        vim.notify("No marked nodes", vim.log.levels.INFO)
+        return
+    end
+    if not drop_paths_to_clipboard(paths) then
+        return
+    end
+    vim.notify("Copied " .. #paths .. " item(s) to system clipboard")
+    clear_marks()
+end
+
+-- <leader>mC (visual): copy the selected files as an Explorer file-drop list,
+-- then return to normal mode.
+function M.copy_selection_content()
+    local paths = selection_paths()
+    if #paths == 0 then
+        return
+    end
+    if drop_paths_to_clipboard(paths) then
+        vim.notify("Copied " .. #paths .. " item(s) to system clipboard")
     end
 end
 
