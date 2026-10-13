@@ -1,6 +1,9 @@
 local M = {}
 
-M.last_op = "copy"
+-- Internal copy/cut buffer for <leader>mc / <leader>mx / <leader>mv.
+-- Deliberately NOT the system clipboard: <leader>mP must paste whatever the
+-- user copied outside Neovim, so mc/mx never touch "+" / "*".
+M.buffer = { op = "copy", paths = {} }
 
 -- Absolute paths marked via <leader>mm. nvim-tree's own copy clipboard holds
 -- the underline (NvimTreeCopiedHL); this set only mirrors it so the marked
@@ -88,26 +91,28 @@ function M.mark_node()
     end
 end
 
--- <leader>mc (normal): copy the marked paths, then drop the underlines.
+-- <leader>mc (normal): copy the marked nodes into the internal buffer
+-- (pasted by <leader>mv), then drop the underlines.
 function M.copy_node_path()
     local paths = marked_paths()
     if #paths == 0 then
         vim.notify("No marked nodes", vim.log.levels.INFO)
         return
     end
-    vim.fn.setreg("+", table.concat(paths, "\n"))
-    vim.notify("Copied " .. #paths .. " path(s) to system clipboard")
+    M.buffer = { op = "copy", paths = paths }
+    vim.notify("Copied " .. #paths .. " node(s); paste with <leader>mv")
     clear_marks()
 end
 
--- <leader>mc (visual): copy the selected paths, then return to normal mode.
+-- <leader>mc (visual): copy the selected nodes into the internal buffer,
+-- then return to normal mode.
 function M.copy_selection_path()
     local paths = selection_paths()
     if #paths == 0 then
         return
     end
-    vim.fn.setreg("+", table.concat(paths, "\n"))
-    vim.notify("Copied " .. #paths .. " path(s) to system clipboard")
+    M.buffer = { op = "copy", paths = paths }
+    vim.notify("Copied " .. #paths .. " node(s); paste with <leader>mv")
 end
 
 function M.cut_node()
@@ -117,11 +122,8 @@ function M.cut_node()
         print("No node selected")
         return
     end
-    local path = node.absolute_path
-    vim.fn.setreg("+", path)
-    vim.fn.setreg("*", path)
-    M.last_op = "cut"
-    print("Marked for cut: " .. path)
+    M.buffer = { op = "cut", paths = { node.absolute_path } }
+    print("Marked for cut: " .. node.absolute_path)
 end
 
 function M.run_executable_detached()
@@ -262,17 +264,13 @@ end
 
 function M.paste_node()
     local api = require("nvim-tree.api")
-    local clipboard = vim.fn.getreg("+")
-    if clipboard == "" then
-        clipboard = vim.fn.getreg("*")
-    end
-
-    if clipboard == "" then
-        print("Clipboard is empty.")
+    if #M.buffer.paths == 0 then
+        print("Nothing copied. Use <leader>mc to copy nodes first.")
         return
     end
 
-    local paths = vim.split(clipboard, "[\r\n]+", { trimempty = true })
+    local paths = M.buffer.paths
+    local is_cut = M.buffer.op == "cut"
     local node = api.tree.get_node_under_cursor()
     if not node then
         print("No destination node selected")
@@ -293,7 +291,7 @@ function M.paste_node()
             local targetPath = destDir .. "/" .. sourceName
 
             if targetPath == sourcePath then
-                if M.last_op ~= "cut" then
+                if not is_cut then
                     targetPath = M.build_copy_target_path(sourcePath, destDir)
                 end
             end
@@ -304,7 +302,7 @@ function M.paste_node()
                 local output
                 if vim.fn.has("win32") == 1 or vim.fn.has("win64") == 1 then
                     local script
-                    if M.last_op == "cut" then
+                    if is_cut then
                         script = string.format(
                             "Move-Item -Path '%s' -Destination '%s' -Force",
                             sourcePath:gsub("'", "''"),
@@ -319,7 +317,7 @@ function M.paste_node()
                     end
                     output = vim.fn.system({ "powershell", "-NoProfile", "-Command", script })
                 else
-                    local cmd = M.last_op == "cut"
+                    local cmd = is_cut
                             and string.format(
                                 'mv "%s" "%s"',
                                 sourcePath:gsub('"', '\\"'),
@@ -345,9 +343,9 @@ function M.paste_node()
     end
 
     if success_count > 0 then
-        print((M.last_op == "cut" and "Moved " or "Copied ") .. success_count .. " item(s).")
-        if M.last_op == "cut" then
-            M.last_op = "copy"
+        print((is_cut and "Moved " or "Copied ") .. success_count .. " item(s).")
+        if is_cut and success_count == #paths then
+            M.buffer = { op = "copy", paths = {} }
         end
         api.tree.reload()
     end

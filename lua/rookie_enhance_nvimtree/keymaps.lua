@@ -46,16 +46,16 @@ function M.on_attach(bufnr)
         "n",
         "<leader>mc",
         actions.copy_node_path,
-        opts("Copy marked paths to clipboard")
+        opts("Copy marked nodes (paste with <leader>mv)")
     )
     vim.keymap.set(
         "v",
         "<leader>mc",
         actions.copy_selection_path,
-        opts("Copy selected paths to clipboard")
+        opts("Copy selected nodes (paste with <leader>mv)")
     )
     vim.keymap.set("n", "<leader>mx", actions.cut_node, opts("Cut node"))
-    vim.keymap.set("n", "<leader>mv", actions.paste_node, opts("Rookie nvim-tree: Paste node"))
+    vim.keymap.set("n", "<leader>mv", actions.paste_node, opts("Paste nodes copied by <leader>mc"))
     vim.keymap.set(
         "n",
         "<leader>mR",
