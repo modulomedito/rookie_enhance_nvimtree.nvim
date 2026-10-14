@@ -46,7 +46,7 @@ function M.on_attach(bufnr)
         "n",
         "<leader>mc",
         actions.copy_node_path,
-        opts("Copy marked nodes (paste with <leader>mv)")
+        opts("Copy node or marked nodes (paste with <leader>mv)")
     )
     vim.keymap.set(
         "v",
@@ -66,7 +66,7 @@ function M.on_attach(bufnr)
         "n",
         "<leader>mC",
         actions.copy_node_content,
-        opts("Copy marked contents to system clipboard")
+        opts("Copy node or marked nodes to system clipboard")
     )
     vim.keymap.set(
         "v",

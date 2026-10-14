@@ -48,6 +48,21 @@ local function marked_paths()
     return paths
 end
 
+-- Marked paths, falling back to the node under the cursor when nothing is
+-- marked: in normal mode only one node is selected, so marking first is
+-- unnecessary.
+local function marked_or_cursor_paths()
+    local paths = marked_paths()
+    if #paths > 0 then
+        return paths
+    end
+    local node = require("nvim-tree.api").tree.get_node_under_cursor()
+    if node and node.absolute_path and node.name ~= ".." then
+        return { node.absolute_path }
+    end
+    return {}
+end
+
 -- Sorted absolute paths of the visual selection, then leave visual mode.
 local function selection_paths()
     local paths = {}
@@ -91,12 +106,13 @@ function M.mark_node()
     end
 end
 
--- <leader>mc (normal): copy the marked nodes into the internal buffer
--- (pasted by <leader>mv), then drop the underlines.
+-- <leader>mc (normal): copy the marked nodes, or the node under the cursor
+-- when nothing is marked, into the internal buffer (pasted by <leader>mv),
+-- then drop the underlines.
 function M.copy_node_path()
-    local paths = marked_paths()
+    local paths = marked_or_cursor_paths()
     if #paths == 0 then
-        vim.notify("No marked nodes", vim.log.levels.INFO)
+        vim.notify("No node to copy", vim.log.levels.INFO)
         return
     end
     M.buffer = { op = "copy", paths = paths }
@@ -176,12 +192,13 @@ local function drop_paths_to_clipboard(paths)
     return true
 end
 
--- <leader>mC (normal): copy the marked files as an Explorer file-drop list,
--- then drop the underlines.
+-- <leader>mC (normal): copy the marked files, or the file under the cursor
+-- when nothing is marked, as an Explorer file-drop list, then drop the
+-- underlines.
 function M.copy_node_content()
-    local paths = marked_paths()
+    local paths = marked_or_cursor_paths()
     if #paths == 0 then
-        vim.notify("No marked nodes", vim.log.levels.INFO)
+        vim.notify("No node to copy", vim.log.levels.INFO)
         return
     end
     if not drop_paths_to_clipboard(paths) then
