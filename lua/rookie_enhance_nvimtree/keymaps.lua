@@ -42,20 +42,7 @@ function M.on_attach(bufnr)
     end
     vim.keymap.set("n", "<leader>mm", actions.mark_node, opts("Mark node (underline)"))
     vim.keymap.set("v", "<leader>mm", actions.mark_node, opts("Mark selected nodes (underline)"))
-    vim.keymap.set(
-        "n",
-        "<leader>mc",
-        actions.copy_node_path,
-        opts("Copy node or marked nodes (paste with <leader>mv)")
-    )
-    vim.keymap.set(
-        "v",
-        "<leader>mc",
-        actions.copy_selection_path,
-        opts("Copy selected nodes (paste with <leader>mv)")
-    )
     vim.keymap.set("n", "<leader>mx", actions.cut_node, opts("Cut node"))
-    vim.keymap.set("n", "<leader>mv", actions.paste_node, opts("Paste nodes copied by <leader>mc"))
     vim.keymap.set(
         "n",
         "<leader>mR",
@@ -64,13 +51,13 @@ function M.on_attach(bufnr)
     )
     vim.keymap.set(
         "n",
-        "<leader>mC",
+        "<leader>mc",
         actions.copy_node_content,
         opts("Copy node or marked nodes to system clipboard")
     )
     vim.keymap.set(
         "v",
-        "<leader>mC",
+        "<leader>mc",
         actions.copy_selection_content,
         opts("Copy selected contents to system clipboard")
     )
@@ -82,7 +69,7 @@ function M.on_attach(bufnr)
     )
     vim.keymap.set(
         "n",
-        "<leader>mP",
+        "<leader>mp",
         actions.paste_system_clipboard_content,
         opts("Paste system clipboard content")
     )
