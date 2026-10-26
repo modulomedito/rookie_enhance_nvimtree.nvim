@@ -69,7 +69,7 @@ function M.on_attach(bufnr)
     )
     vim.keymap.set(
         "n",
-        "<leader>mp",
+        "<leader>mv",
         actions.paste_system_clipboard_content,
         opts("Paste system clipboard content")
     )
