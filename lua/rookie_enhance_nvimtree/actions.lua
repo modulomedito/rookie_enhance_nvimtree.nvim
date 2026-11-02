@@ -160,8 +160,10 @@ function M.run_executable_detached()
     end
 end
 
--- Put paths on the Windows clipboard as an Explorer file-drop list.
-local function drop_paths_to_clipboard(paths)
+-- Put paths on the Windows clipboard as an Explorer file-drop list. With
+-- `cut`, the drop effect is marked as Move (Preferred DropEffect = 2) so
+-- Explorer moves the files instead of copying them.
+local function drop_paths_to_clipboard(paths, cut)
     if vim.fn.has("win32") == 0 and vim.fn.has("win64") == 0 then
         vim.notify("File-drop to the system clipboard is Windows only", vim.log.levels.WARN)
         return false
@@ -175,14 +177,24 @@ local function drop_paths_to_clipboard(paths)
         end
     end
     if #adds == 0 then
-        vim.notify("No readable files to copy", vim.log.levels.WARN)
+        vim.notify("No readable items to put on the clipboard", vim.log.levels.WARN)
         return false
     end
+
+    local writer = cut
+            and "$data = New-Object System.Windows.Forms.DataObject; "
+                .. "$data.SetFileDropList($files); "
+                .. "$ms = New-Object System.IO.MemoryStream; "
+                .. "$ms.Write([byte[]](2,0,0,0), 0, 4); "
+                .. "$data.SetData('Preferred DropEffect', $ms); "
+                .. "[System.Windows.Forms.Clipboard]::SetDataObject($data, $true)"
+        or "[System.Windows.Forms.Clipboard]::SetFileDropList($files)"
 
     local script = "Add-Type -AssemblyName System.Windows.Forms; "
         .. "$files = New-Object System.Collections.Specialized.StringCollection; "
         .. table.concat(adds, "; ")
-        .. "; [System.Windows.Forms.Clipboard]::SetFileDropList($files)"
+        .. "; "
+        .. writer
 
     local output = vim.fn.system({ "powershell", "-NoProfile", "-Command", script })
     if vim.v.shell_error ~= 0 then
@@ -220,34 +232,20 @@ function M.copy_selection_content()
     end
 end
 
+-- <leader>mx (normal): cut the marked files, or the file under the cursor
+-- when nothing is marked, as an Explorer file-drop list with a Move effect,
+-- then drop the underlines.
 function M.cut_node_content()
-    local api = require("nvim-tree.api")
-    local node = api.tree.get_node_under_cursor()
-    if not node then
-        print("No node selected")
+    local paths = marked_or_cursor_paths()
+    if #paths == 0 then
+        vim.notify("No node to cut", vim.log.levels.INFO)
         return
     end
-    local path = node.absolute_path
-    path = path:gsub("/", "\\")
-
-    if vim.fn.filereadable(path) == 0 and vim.fn.isdirectory(path) == 0 then
-        print("Path not readable: " .. path)
+    if not drop_paths_to_clipboard(paths, true) then
         return
     end
-
-    local ps_path = path:gsub("'", "''")
-    -- In Windows, "cut" is set by Preferred DropEffect = 2
-    local script = string.format(
-        "Add-Type -AssemblyName System.Windows.Forms; $files = New-Object System.Collections.Specialized.StringCollection; $files.Add('%s'); $data = New-Object System.Windows.Forms.DataObject; $data.SetFileDropList($files); $ms = New-Object System.IO.MemoryStream; $ms.Write([byte[]](2,0,0,0), 0, 4); $data.SetData('Preferred DropEffect', $ms); [System.Windows.Forms.Clipboard]::SetDataObject($data, $true)",
-        ps_path
-    )
-
-    local output = vim.fn.system({ "powershell", "-NoProfile", "-Command", script })
-    if vim.v.shell_error == 0 then
-        print("Marked for cut in system clipboard (Explorer compatible): " .. path)
-    else
-        print("Failed to cut file to clipboard: " .. output)
-    end
+    vim.notify("Cut " .. #paths .. " item(s) to system clipboard")
+    clear_marks()
 end
 
 function M.build_copy_target_path(sourcePath, destDir)

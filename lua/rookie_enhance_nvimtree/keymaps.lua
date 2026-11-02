@@ -42,7 +42,12 @@ function M.on_attach(bufnr)
     end
     vim.keymap.set("n", "<leader>mm", actions.mark_node, opts("Mark node (underline)"))
     vim.keymap.set("v", "<leader>mm", actions.mark_node, opts("Mark selected nodes (underline)"))
-    vim.keymap.set("n", "<leader>mx", actions.cut_node, opts("Cut node"))
+    vim.keymap.set(
+        "n",
+        "<leader>mx",
+        actions.cut_node_content,
+        opts("Cut node or marked nodes to system clipboard")
+    )
     vim.keymap.set(
         "n",
         "<leader>mR",
