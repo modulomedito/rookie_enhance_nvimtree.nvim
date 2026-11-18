@@ -36,9 +36,13 @@ function M.on_attach(bufnr)
         vim.keymap.set("n", "s", function()
             local node = api.tree.get_node_under_cursor()
             if node then
-                vim.ui.open(node.absolute_path)
+                local path = node.absolute_path
+                if not path:match("[\\/]$") then
+                    path = path .. "\\"
+                end
+                vim.fn.system({ "cmd.exe", "/s", "/c", 'explorer.exe "' .. path .. '"' })
             end
-        end, opts("Open node with start (win32)"))
+        end, opts("Open node in File Explorer (win32)"))
     end
     vim.keymap.set("n", "<leader>mm", actions.mark_node, opts("Mark node (underline)"))
     vim.keymap.set("v", "<leader>mm", actions.mark_node, opts("Mark selected nodes (underline)"))
